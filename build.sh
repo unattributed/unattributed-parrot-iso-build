@@ -1,281 +1,180 @@
-# 🔨 Custom Parrot OS ISO Build Plan
-
-This document outlines all required specifications, configurations, and tasks for creating a fully automated and customized Parrot OS ISO using `parrot-iso-build`.
-
----
-
-## ✅ Goals
-
-* Produce a Parrot OS ISO that:
-
-  * Uses a specific disk layout and partitions automatically
-  * Installs a predefined set of custom `.deb` packages on first boot
-  * Adds system utilities and browser extensions
-  * Configures GPG keys for GitHub commit signing
-  * Installs Python and bash utility scripts into `~/scripts/`
-  * Sets timezone and NTP correctly
-  * Sets a custom desktop wallpaper by default
-  * Applies a specific desktop theme appearance
-  * Creates development and encryption-related folders (`~/workspace`, `~/veracrypt`)
-  * Applies shell preferences and Git identity automatically
-  * Captures logs of first-boot installation tasks
-  * Adds safety mechanisms for idempotent first-boot logic
-
----
-
-## 📁 User Configuration
-
-* **Username:** `foo`
-* **Password:** `g2monkey` (hardcoded)
-* **Groups:** `sudo` (added to allow administrative privileges)
-
----
-
-## 📜 Partition Layout (Autonomous Setup)
-
-| Mount Point | Device           | Size      | File System  | Flags       |
-| ----------- | ---------------- | --------- | ------------ | ----------- |
-| /boot/efi   | `/dev/nvme1n1p1` | 300 MiB   | `fat32`      | `boot, esp` |
-| /, /home    | `/dev/nvme1n1p2` | 1.75 TiB  | `btrfs`      | -           |
-| swap        | `/dev/nvme1n1p3` | 68.76 GiB | `linux-swap` | `swap`      |
-
-A `preseed.cfg` file located at `auto/config/preseed.cfg` is used with partman-auto to enforce this layout.
-
----
-
-## 🌐 Timezone & Networking
-
-* **Timezone:** `Asia/Bangkok`
-* **NTP:** Enabled
-* **RTC:** UTC (not local time)
-
-```bash
-sudo timedatectl set-timezone Asia/Bangkok
-sudo systemctl restart systemd-timesyncd
-sudo timedatectl set-ntp on
-```
-
----
-
-## 🔐 GPG Keys (Trusted on First Boot)
-
-### GitHub Signing Key:
-
-```
-[PGP PUBLIC KEY BLOCK for unattributed]
-```
-
-### Personal Identity Key:
-
-```
-[PGP PUBLIC KEY BLOCK for Duncan/BlackBagSecurity]
-```
-
-* Keys must be trusted and pre-imported
-* Git config should support commit signing post-install
-
----
-
-## 🖼 Default Desktop Background
-
-* Set to: `Elephants_5640x3172.jpg`
-* File path: `/usr/share/backgrounds/mate/abstract/Elephants_5640x3172.jpg`
-* Applied via `setup-theme.sh` at first boot
-
----
-
-## 😕 Desktop Theme Appearance
-
-* GTK Theme: `BlackMATE`
-* Window Manager Theme: `BlackMATE`
-* Icon Theme: `mate`
-* Font: `Cantarell 11`
-
-These are applied by `/usr/local/bin/setup-theme.sh` via gsettings using systemd.
-
----
-
-## 📁 Scripts Directory
-
-* Location: `~/scripts/`
-* Must include non-packaged `*.py` and `*.sh` scripts from:
-
-  * `/home/foo/workspace/parrot-os-modifications/scripts/`
-
-### Script Tree:
-
-```
-scripts/
-├── install_nvidia.py
-├── keys
-│   ├── import_gpg_keys.sh
-│   ├── publickey.duncan@blackbagsecurity.com-6f97b79b5f189e7f421a4c667f60a5b61df975b6.asc
-│   └── publickey.shopkeeper@unattributed.blog-d633e67f12a12a9c3dc410965ff509dca27b26e0.asc
-├── setup_brave.py
-├── setup_configure_gpg.py
-├── setup_edge.py
-├── setup_nvidia.py
-├── setup_protonpass.py
-├── setup_protonvpn_extension.py
-├── setup-signal.py
-├── setup_touchpad_watcher.py
-├── setup_veracrypt.py
-├── setup_vscode_insiders.py
-├── setup_vscode.py
-└── VS_Code_Insiders_extensions.py
-```
-
-* Create the following additional directories as part of ISO provisioning:
-
-  * `~/workspace`
-  * `~/veracrypt`
-
----
-
-## 📦 Custom `.deb` Packages (Installed on First Boot via systemd)
-
-Each has its own systemd one-shot installer:
-
-* `setup-nvidia.deb`
-* `setup-edge.deb`
-* `setup-signal.deb`
-* `setup-vscode.deb`
-* `setup-brave.deb`
-
-Installed and triggered via:
-
-```bash
-sudo systemctl enable setup-<name>.service
-```
-
----
-
-## 📜 Additional APT Sources
-
-```bash
-echo "deb http://deb.debian.org/debian bookworm-backports main" \
-  | sudo tee /etc/apt/sources.list.d/backports.list
-
-sudo apt update
-sudo apt install -t bookworm-backports systemd systemd-timesyncd
-```
-
----
-
-## 🗓 Additional Packages (From Lory or Backports)
-
-```bash
-sudo apt install -y \
-  kde-cli-tools ntp ntpdate gh xinput joe gpg \
-  pinentry-gtk2 pinentry-curses dirmngr seahorse \
-  devscripts virtualbox apt-transport-https \
-  ca-certificates curl software-properties-common libsecret-1-0 libsecret-1-dev
-```
-
----
-
-## 🔐 Manual Software Post-Install (Not ISO-packed)
-
-* **ProtonPass** browser extension (install manually post-boot)
-* **Veracrypt** (to be manually installed by user)
-
----
-
-## 🚀 First-Boot Behavior (Orchestrated)
-
-Executed automatically after ISO boots:
-
-1. Full system update:
-
-```bash
-sudo apt update && sudo apt full-upgrade -y && sudo apt autoremove -y
-```
-
-2. All `.deb` packages installed silently
-3. All custom services execute once via systemd
-4. GPG keys trusted
-5. Scripts directory created and populated
-6. `~/workspace` and `~/veracrypt` directories created
-7. Timezone set:
-
-```bash
-sudo timedatectl set-timezone Asia/Bangkok
-sudo systemctl restart systemd-timesyncd
-sudo timedatectl set-ntp on
-```
-
-8. Desktop background set to `Elephants_5640x3172.jpg`
-9. Desktop appearance theme set to BlackMATE (GTK + WM), icons: `mate`, font: `Cantarell 11`
-10. User `foo` pre-added to `sudo` group
-11. Shell preferences applied:
-    * Git identity preset with GPG signing
-    * Dotfiles (`.bashrc`, `.profile`, `.gitconfig`, etc.) installed if available
-12. Unattended upgrades enabled
-13. First-boot system logs collected to `/var/log/setup-*.log`
-14. Completion flag created at `/var/log/custom-iso-setup.done`
-15. One-shot services built with `ConditionFirstBoot=yes` and `SuccessExitStatus=0`
-16. Firewall configuration using `ufw`:
-
-```bash
-sudo apt install -y ufw
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw enable
-```
-
-17. Monitoring tools:
-
-```bash
-sudo apt install -y htop btop lm-sensors sysstat ncdu
-```
-
----
-
-## 🧪 QEMU Testing Environment
-
-Custom ISOs are tested in a virtualized QEMU environment to validate installation, first-boot behavior, and provisioning correctness.
-
-### Launch Script: `run-qemu.sh`
-```bash
 #!/bin/bash
-set -e
 
-ISO="images/Parrot-home-6.0_amd64.iso"
-DISK="parrot-test-disk.qcow2"
+set -euo pipefail
 
-# Create disk image if missing
-if [ ! -f "$DISK" ]; then
-    qemu-img create -f qcow2 "$DISK" 64G
-fi
+# ─── COLORS ─────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[1;34m'
+NC='\033[0m'
 
-qemu-system-x86_64 \
-  -enable-kvm \
-  -m 8192 \
-  -smp cpus=8,sockets=1,cores=4,threads=2 \
-  -cpu host \
-  -machine q35,accel=kvm \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
-  -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS.fd \
-  -cdrom "$ISO" \
-  -drive file="$DISK",format=qcow2,if=virtio \
-  -display sdl,gl=on \
-  -vga virtio \
-  -boot d \
-  -nic user
-```
+info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
+success() { echo -e "${GREEN}[OK]${NC}   $*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-The script is located in `~/workspace/custom_parrot_iso/run-qemu.sh` and provides:
-- UEFI boot support via OVMF
-- 8 GB RAM and 8 vCPUs
-- virtio drivers for disk and display
-- SDL window with OpenGL
+# ─── CONFIG ─────────────────────────────────────
+PARROT_DIST="lory"
+PARROT_VERSION="6.0"
+PARROT_VARIANT="default"
+IMAGE_TYPE="live"
+TARGET_DIR="$(dirname "$0")/images"
+TARGET_SUBDIR=""
+SUDO="sudo"
+VERBOSE=""
+DEBUG=""
+HOST_ARCH=$(dpkg --print-architecture)
+ACTION="${ACTION:-}"  # Prevent unbound var
 
----
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD_LOG="$SCRIPT_DIR/build.log"
+AUTO_CHROOT="$1/auto/config/includes.chroot"
 
-## 📦 Tools Used
+# ─── INIT ───────────────────────────────────────
+: > "$BUILD_LOG"
+info "Logging to $BUILD_LOG"
 
-* `parrot-iso-build` (custom fork at `/home/foo/workspace/unattributed-parrot-iso-build/build.sh`)
-  - Includes modifications not present in `main`, such as structured logging, ISO verification, and custom provisioning logic
-* `systemd` one-shot services for delayed install
-* `fakeroot dpkg-deb` to build `.deb` packages
-* `lintian` for validating `.deb` integrity
+# ─── FUNCTIONS ──────────────────────────────────
+image_name() {
+	case "$IMAGE_TYPE" in
+		live) echo "live-image-$PARROT_ARCH.hybrid.iso" ;;
+		installer)
+			if [ "$PARROT_VARIANT" = "netinst" ]; then
+				echo "architect/images/parrot-$PARROT_VERSION-$PARROT_ARCH-NETINST-1.iso"
+			else
+				echo "architect/images/parrot-$PARROT_VERSION-$PARROT_ARCH-DVD-1.iso"
+			fi
+		;;
+	esac
+}
+
+target_image_name() {
+	local arch=$1
+	IMAGE_NAME="$(image_name $arch)"
+	IMAGE_EXT="${IMAGE_NAME##*.}"
+	[ "$IMAGE_EXT" = "$IMAGE_NAME" ] && IMAGE_EXT="img"
+	if [ "$IMAGE_TYPE" = "live" ]; then
+		if [ "$PARROT_VARIANT" = "default" ]; then
+			echo "${TARGET_SUBDIR:+$TARGET_SUBDIR/}Parrot-home-${PARROT_VERSION}_$PARROT_ARCH.$IMAGE_EXT"
+		else
+			echo "${TARGET_SUBDIR:+$TARGET_SUBDIR/}Parrot-$PARROT_VARIANT-${PARROT_VERSION}_$PARROT_ARCH.$IMAGE_EXT"
+		fi
+	else
+		echo "${TARGET_SUBDIR:+$TARGET_SUBDIR/}Parrot-architect-${PARROT_VERSION}_$PARROT_ARCH.$IMAGE_EXT"
+	fi
+}
+
+target_build_log() {
+	TARGET_IMAGE_NAME=$(target_image_name "$1")
+	echo "${TARGET_IMAGE_NAME%.*}.log"
+}
+
+run_and_log() {
+	info "$*"
+	if ! "$@" 2>&1 | tee -a "$BUILD_LOG"; then
+		error "Command failed: $*"
+		exit 1
+	fi
+}
+
+clean() {
+	info "🧹 Cleaning previous build..."
+	run_and_log $SUDO lb clean --purge
+	run_and_log $SUDO rm -rf "$(pwd)/architect/tmp" "$(pwd)/architect/debian-cd"
+}
+
+verify_customizations() {
+	info "🔍 Verifying embedded customizations..."
+
+# Check debs
+	if compgen -G "$AUTO_CHROOT/root/debs/*.deb" >/dev/null; then
+		echo -e "\n📦 Custom .deb files:" | tee -a "$BUILD_LOG"
+		ls -1 "$AUTO_CHROOT"/root/debs/*.deb | tee -a "$BUILD_LOG"
+	else
+		echo "⚠️  No custom debs found in /root/debs/" | tee -a "$BUILD_LOG"
+	fi
+
+# Check services
+	if compgen -G "$AUTO_CHROOT/etc/systemd/system/*.service" >/dev/null; then
+		echo -e "\n🛠 Systemd services:" | tee -a "$BUILD_LOG"
+		ls -1 "$AUTO_CHROOT"/etc/systemd/system/*.service | tee -a "$BUILD_LOG"
+	fi
+
+# Check scripts
+	if [ -d "$AUTO_CHROOT/home/foo/scripts" ]; then
+		echo -e "\n📁 Scripts to be included:" | tee -a "$BUILD_LOG"
+		find "$AUTO_CHROOT/home/foo/scripts" -type f | tee -a "$BUILD_LOG"
+	fi
+
+# Final note
+	success "All custom content detected and ready for ISO"
+}
+
+summarize_packages() {
+	echo -e "\n📝 ISO PACKAGE SUMMARY" | tee -a "$BUILD_LOG"
+	echo "----------------------------" | tee -a "$BUILD_LOG"
+	echo "✔️  Base Parrot OS system: will be included via live-build."
+
+	# From repo
+	if grep -r "apt install" "$AUTO_CHROOT"/*.sh "$AUTO_CHROOT"/usr/local/bin/*.sh 2>/dev/null | grep -v "/root/debs" | grep -v setup-*.deb > /tmp/repo-pkgs.txt; then
+		echo -e "\n📦 Additional .deb from Parrot repositories:" | tee -a "$BUILD_LOG"
+		grep -oP '(?<=apt install -y )[^&|;]+' /tmp/repo-pkgs.txt | tr ' ' '\n' | sort -u | tee -a "$BUILD_LOG"
+	fi
+
+	# Custom
+	if compgen -G "$AUTO_CHROOT/root/debs/*.deb" >/dev/null; then
+		echo -e "\n🔧 Custom .deb packages:" | tee -a "$BUILD_LOG"
+		ls "$AUTO_CHROOT"/root/debs/*.deb | sed 's|.*/||' | tee -a "$BUILD_LOG"
+	fi
+}
+
+# ─── ARG PARSE (based on original logic) ────────
+. "$SCRIPT_DIR/.getopt.sh"
+temp=$(getopt -o "$BUILD_OPTS_SHORT" -l "$BUILD_OPTS_LONG,get-image-path" -- "$@")
+eval set -- "$temp"
+while true; do
+	case "$1" in
+		-d|--distribution) PARROT_DIST="$2"; shift 2 ;;
+		-a|--arch) PARROT_ARCH="$2"; shift 2 ;;
+		-v|--verbose) VERBOSE="1"; shift ;;
+		-D|--debug) DEBUG="1"; shift ;;
+		--variant) PARROT_VARIANT="$2"; shift 2 ;;
+		--version) PARROT_VERSION="$2"; shift 2 ;;
+		--subdir) TARGET_SUBDIR="$2"; shift 2 ;;
+		--get-image-path) ACTION="get-image-path"; shift ;;
+		--clean) ACTION="clean"; shift ;;
+		--no-clean) NO_CLEAN="1"; shift ;;
+		--) shift; break ;;
+		*) error "Unknown option: $1"; exit 1 ;;
+	esac
+done
+
+PARROT_ARCH="${PARROT_ARCH:-$HOST_ARCH}"
+[[ "$PARROT_ARCH" == "x64" ]] && PARROT_ARCH="amd64"
+[[ "$PARROT_ARCH" == "x86" ]] && PARROT_ARCH="i386"
+
+[[ "$ACTION" == "get-image-path" ]] && echo "$(target_image_name $PARROT_ARCH)" && exit 0
+[[ "${NO_CLEAN:-}" != "1" ]] && clean
+[[ "$ACTION" == "clean" ]] && exit 0
+
+cd "$SCRIPT_DIR"
+mkdir -p "$TARGET_DIR/$TARGET_SUBDIR"
+
+# ─── BUILD ──────────────────────────────────────
+info "⚙️  Configuring live-build..."
+run_and_log lb config -a "$PARROT_ARCH" --distribution "$PARROT_DIST" -- --variant "$PARROT_VARIANT" --version "$PARROT_VERSION"
+
+info "🏗 Building ISO..."
+run_and_log $SUDO lb build
+
+verify_customizations
+summarize_packages
+
+# ─── FINAL OUTPUT ───────────────────────────────
+ISO_OUT="$(image_name)"
+FINAL_ISO="$TARGET_DIR/$(target_image_name $PARROT_ARCH)"
+run_and_log mv -f "$ISO_OUT" "$FINAL_ISO"
+run_and_log mv -f "$BUILD_LOG" "$TARGET_DIR/$(target_build_log $PARROT_ARCH)"
+
+success "✅ ISO build completed"
+info "📦 ISO: $FINAL_ISO"
+info "📄 Log: $TARGET_DIR/$(target_build_log $PARROT_ARCH)"
