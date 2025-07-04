@@ -39,3 +39,5 @@ simple-cdd/profiles/parrot.downloads
 prepare.log
 wget*
 binary.modified_timestamps
+parrot-test-disk.qcow2
+run-qemu.sh
