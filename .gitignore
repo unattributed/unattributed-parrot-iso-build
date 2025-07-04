@@ -37,3 +37,5 @@ simple-cdd/profiles/parrot.downloads
 .lock
 .stage
 prepare.log
+wget*
+binary.modified_timestamps
