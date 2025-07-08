@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+# Custom live-build config hook
+echo "[auto/config] Applying any live-build configuration overrides..."
+# Example: override kernel flavor, set apt sources, etc.
+# No-op for now
